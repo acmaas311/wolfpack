@@ -226,10 +226,53 @@ function AuthenticatedApp({ user, teamMember, signOut }) {
 }
 
 // ─── Auth gate: renders the right screen based on auth state ───
+// ─── Session-expired modal ───────────────────────────────────────────────────
+// Shown when Supabase silently drops the session (token refresh failure, etc.)
+// so the user isn't left confused by a broken app.
+function SessionExpiredModal({ onSignIn }) {
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.6)' }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+        <div
+          className="w-12 h-12 rounded-xl mx-auto mb-4 flex items-center justify-center text-xl font-extrabold text-white"
+          style={{ background: 'linear-gradient(135deg, #FF6B35, #1D428A)' }}
+        >W</div>
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Session expired</h2>
+        <p className="text-sm text-slate-500 mb-5">
+          You've been signed out after a period of inactivity. Sign back in to continue.
+        </p>
+        <button
+          onClick={onSignIn}
+          className="w-full py-2.5 rounded-xl text-white font-semibold text-sm"
+          style={{ background: 'linear-gradient(135deg, #FF6B35, #1D428A)' }}
+        >
+          Sign in again
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const { user, teamMember, loading: authLoading, signOut } = useAuth();
+  const { user, teamMember, loading: authLoading, sessionExpired, signOut, signInWithGoogle } = useAuth();
 
   if (authLoading) return <LoadingScreen />;
+
+  // Show the expiry modal on top of whatever the current screen is.
+  // The user is already signed out at this point so `!user` is true too,
+  // but we render LoginPage underneath so navigation still works after dismiss.
+  if (sessionExpired) {
+    return (
+      <>
+        <LoginPage />
+        <SessionExpiredModal onSignIn={signInWithGoogle} />
+      </>
+    );
+  }
+
   if (!user) return <LoginPage />;
 
   // Signed in with Google but email not in team_members — block access

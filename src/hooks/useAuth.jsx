@@ -7,6 +7,9 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [teamMember, setTeamMember] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Set to true when Supabase silently drops a session (token refresh failure,
+  // refresh token expiry, etc.) so the UI can show an explanatory prompt.
+  const [sessionExpired, setSessionExpired] = useState(false);
   // Google access token — stored in sessionStorage so it survives soft refreshes
   const [googleAccessToken, setGoogleAccessToken] = useState(
     () => sessionStorage.getItem('_gat') || null
@@ -20,10 +23,15 @@ export function AuthProvider({ children }) {
       setLoading(false);
     }, 10000);
 
+    // Track whether we've ever had a signed-in session in this page load so we
+    // can distinguish "user just opened the app while logged out" (not expired)
+    // from "user was active and got silently signed out" (session expired).
+    let hadSession = false;
+
     // In Supabase v2, onAuthStateChange fires immediately with INITIAL_SESSION,
     // so we don't need a separate getSession() call.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         setUser(session?.user ?? null);
         // Capture the Google OAuth access token whenever it's present.
         // It's only available right after sign-in (not on every refresh),
@@ -33,8 +41,19 @@ export function AuthProvider({ children }) {
           sessionStorage.setItem('_gat', session.provider_token);
         }
         if (session?.user) {
+          hadSession = true;
+          setSessionExpired(false);
           await loadTeamMember(session.user);
         } else {
+          // SIGNED_OUT can fire either because the user clicked Sign Out
+          // (hadSession may be true) or because the refresh token expired
+          // while the tab sat in the background (TOKEN_REFRESH_FAILED fires
+          // first, then SIGNED_OUT).  Only show the expiry banner when the
+          // session was dropped silently — not on an explicit user sign-out
+          // (which calls our signOut() function that sets hadSession guard).
+          if (hadSession && event === 'SIGNED_OUT') {
+            setSessionExpired(true);
+          }
           setTeamMember(null);
           setGoogleAccessToken(null);
           sessionStorage.removeItem('_gat');
@@ -103,6 +122,7 @@ export function AuthProvider({ children }) {
     // login screen immediately without waiting for the API call.
     setUser(null);
     setTeamMember(null);
+    setSessionExpired(false);   // hide the expiry banner if it was showing
 
     // Clear the Drive access token too
     setGoogleAccessToken(null);
@@ -116,7 +136,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, teamMember, loading, googleAccessToken, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, teamMember, loading, sessionExpired, googleAccessToken, signInWithGoogle, signOut }}>
       {children}
     </AuthContext.Provider>
   );
