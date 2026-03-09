@@ -298,6 +298,18 @@ export default function TimelineView({ tasks, team, designs, onUpdate, onCreate,
                         label={COLUMNS.find(c => c.id === task.status)?.label || task.status}
                         color={task.status === 'done' ? '#10B981' : task.status === 'in-progress' ? '#FF6B35' : task.status === 'review' ? '#1D428A' : '#94A3B8'}
                       />
+                      {!isDone && (
+                        <button
+                          onClick={e => { e.stopPropagation(); onUpdate(task.id, { status: 'done' }); }}
+                          title="Mark as done"
+                          className="flex items-center justify-center w-6 h-6 rounded-full cursor-pointer transition-all flex-shrink-0"
+                          style={{ border: '1.5px solid #10B981', color: '#10B981', background: 'transparent', fontSize: '11px', fontWeight: 700 }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.1)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          ✓
+                        </button>
+                      )}
                     </div>
                   </Card>
                 );

@@ -270,6 +270,17 @@ function KanbanCard({ task, team, designs, projects = [], onUpdate, onDelete }) 
             {task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : '—'}
           </span>
         </div>
+        {task.status !== 'done' && (
+          <div className="mt-2 pt-2 border-t border-slate-100">
+            <button
+              onClick={e => { e.stopPropagation(); onUpdate(task.id, { status: 'done' }); }}
+              className="w-full flex items-center justify-center gap-1 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-all"
+              style={{ background: 'rgba(16,185,129,0.08)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)' }}
+            >
+              ✓ Mark as Done
+            </button>
+          </div>
+        )}
       </Card>
 
       {datePop && <DatePopover anchorRect={datePop} currentDate={task.due_date} onSelect={d => onUpdate(task.id, { due_date: d })} onClose={() => setDatePop(null)} />}
@@ -339,6 +350,7 @@ function TaskTableView({ tasks, team, designs, projects = [], onUpdate, onDelete
               <th className={thCls} onClick={() => handleSort('assignee')}>Assignee<SortIcon k="assignee" /></th>
               <th className={thCls} onClick={() => handleSort('due_date')}>Due Date<SortIcon k="due_date" /></th>
               <th className={thCls} onClick={() => handleSort('design')}>Design<SortIcon k="design" /></th>
+              <th className={thCls}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -406,6 +418,19 @@ function TaskTableView({ tasks, team, designs, projects = [], onUpdate, onDelete
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-[12px] text-slate-500">{design?.name || '—'}</span>
+                  </td>
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    {task.status !== 'done' ? (
+                      <button
+                        onClick={() => onUpdate(task.id, { status: 'done' })}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-all whitespace-nowrap"
+                        style={{ background: 'rgba(16,185,129,0.08)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)' }}
+                      >
+                        ✓ Done
+                      </button>
+                    ) : (
+                      <span className="text-[11px] font-semibold font-mono" style={{ color: '#10B981' }}>✓ Done</span>
+                    )}
                   </td>
                 </tr>
               );
