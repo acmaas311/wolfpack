@@ -75,13 +75,11 @@ export const logActivity = async (userId, activityType, entityType, entityId, de
       .from('activity_log')
       .insert([
         {
-          user_id: userId,
-          activity_type: activityType,
-          details: {
-            ...details,
-            entity_type: entityType,
-            entity_id: entityId,
-          },
+          actor_id: userId,
+          action: activityType,
+          entity_type: entityType,
+          entity_id: entityId,
+          details: details,
           created_at: new Date().toISOString()
         }
       ]);
