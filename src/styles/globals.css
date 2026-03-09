@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 3px; }
+
+  select option {
+    background: #fff;
+    color: #1e293b;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    border-color: #FF6B35 !important;
+    outline: none;
+  }
+}
+
+/* Drag visual feedback */
+[draggable="true"] {
+  cursor: grab;
+}
+[draggable="true"]:active {
+  cursor: grabbing;
+}
