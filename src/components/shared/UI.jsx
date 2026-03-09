@@ -101,9 +101,14 @@ export function Overlay({ onClose, children }) {
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6"
+      // cursor-pointer is required for iOS Safari to fire onClick on non-button divs
+      className="fixed inset-0 bg-slate-900/40 z-[100] flex items-center justify-center p-4 sm:p-6 cursor-pointer"
     >
-      <div onClick={e => e.stopPropagation()} className="w-full flex justify-center">
+      {/* stopPropagation prevents backdrop tap from closing the modal when clicking inside */}
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full flex justify-center cursor-default"
+      >
         {children}
       </div>
     </div>

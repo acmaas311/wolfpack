@@ -39,6 +39,7 @@ function DesignCreateModal({ team, onCreate, onClose }) {
     if (!form.name.trim() || saving) return;
     setSaving(true);
     setSaveError(null);
+    let timeoutId = null;
     try {
       // Build payload — strip null created_by_id so missing DB column doesn't break insert
       const payload = {
@@ -48,12 +49,21 @@ function DesignCreateModal({ team, onCreate, onClose }) {
         assignee_id: form.assignee_ids[0] || null,
         notes: form.notes,
         platforms: form.platforms,
-        drive_file_url: form.drive_file_url.trim() || null,
-        drive_file_name: form.drive_file_name.trim() || null,
+        drive_file_url: (form.drive_file_url ?? '').trim() || null,
+        drive_file_name: (form.drive_file_name ?? '').trim() || null,
       };
       if (form.created_by_id) payload.created_by_id = form.created_by_id;
 
-      const newDesign = await onCreate(payload);
+      // Same iOS Safari timeout guard as in handleSave
+      const createPromise = onCreate(payload);
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('Request timed out — check your connection and try again.')),
+          25000
+        );
+      });
+
+      const newDesign = await Promise.race([createPromise, timeoutPromise]);
 
       // If DB insert failed (returned null), show error and stay open
       if (!newDesign?.id) {
@@ -64,8 +74,9 @@ function DesignCreateModal({ team, onCreate, onClose }) {
       onClose();
     } catch (err) {
       console.error('Create design error:', err);
-      setSaveError('Something went wrong. Please try again.');
+      setSaveError(err.message || 'Something went wrong. Please try again.');
     } finally {
+      clearTimeout(timeoutId);
       setSaving(false);
     }
   };
@@ -187,19 +198,35 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
     if (saving) return;
     setSaving(true);
     setSaveError(null);
+    let timeoutId = null;
     try {
-      await onSave(design.id, {
+      const updates = {
         ...form,
         assignee_ids: form.assignee_ids,
-        assignee_id: form.assignee_ids[0] || null,  // backward compat
-        drive_file_url: form.drive_file_url.trim() || null,
-        drive_file_name: form.drive_file_name.trim() || null,
+        assignee_id: form.assignee_ids[0] || null,
+        // Use ?? '' so .trim() never throws if a field is null/undefined
+        drive_file_url: (form.drive_file_url ?? '').trim() || null,
+        drive_file_name: (form.drive_file_name ?? '').trim() || null,
+      };
+
+      // iOS Safari can silently hang fetch() when the network switches or a
+      // token refresh stalls — race against a 25-second timeout so the button
+      // never stays frozen at "Saving…" forever.
+      const savePromise = onSave(design.id, updates);
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('Save timed out — check your connection and try again.')),
+          25000
+        );
       });
+
+      await Promise.race([savePromise, timeoutPromise]);
       onClose();
     } catch (err) {
       console.error('Save design error:', err);
-      setSaveError('Failed to save changes. Please try again.');
+      setSaveError(err.message || 'Failed to save changes. Please try again.');
     } finally {
+      clearTimeout(timeoutId);
       setSaving(false);
     }
   };
