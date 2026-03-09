@@ -79,6 +79,7 @@ export default function ProjectsView({ projects, team, tasks, onCreate, onUpdate
           tasks={tasks}
           onOpenDetail={setDetailProject}
           onNewProject={() => setShowCreate(true)}
+          onUpdate={onUpdate}
         />
       )}
       {view === 'table' && (

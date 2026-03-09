@@ -63,22 +63,23 @@ export function useProjects() {
   }, []);
 
   const updateProject = useCallback(async (id, updates) => {
-    const { error } = await supabase
+    // Single round-trip: update + return the updated row immediately.
+    // Avoids the previous two-call pattern that could exceed the modal's
+    // 12-second safety timeout on slower connections.
+    const { data, error } = await supabase
       .from('projects')
       .update(updates)
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
     if (error) {
       console.error('Update project error:', error);
       console.error('Details:', error?.details, '| Hint:', error?.hint, '| Code:', error?.code);
-      return null;
+      throw error;
     }
-    // Refetch to keep local state accurate
-    const { data: refreshed } = await supabase
-      .from('projects')
-      .select('*')
-      .order('created_at');
-    setProjects(refreshed || []);
-    return refreshed?.find(p => p.id === id) ?? null;
+    // Patch local state immediately so the UI reflects the change right away
+    setProjects(prev => prev.map(p => p.id === id ? data : p));
+    return data;
   }, []);
 
   const deleteProject = useCallback(async (id) => {

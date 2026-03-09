@@ -1,3 +1,4 @@
+import { useState, useRef } from 'react';
 import { Avatar, PriorityDot } from '../shared/UI';
 
 const PROJECT_STATUSES = [
@@ -17,7 +18,7 @@ function fmtBudget(b) {
   return '$' + Number(b).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-function ProjectCard({ project, team, tasks, onClick }) {
+function ProjectCard({ project, team, tasks, onClick, onDragStart, onDragEnd, isDragging }) {
   const lead = team.find(m => m.id === project.lead_id);
   const projectTasks = tasks.filter(t => Number(t.project_id) === Number(project.id));
   const doneTasks = projectTasks.filter(t => t.status === 'done').length;
@@ -26,8 +27,12 @@ function ProjectCard({ project, team, tasks, onClick }) {
 
   return (
     <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onClick={onClick}
-      className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-px transition-all cursor-pointer p-4"
+      className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-px transition-all cursor-grab active:cursor-grabbing p-4"
+      style={{ opacity: isDragging ? 0.4 : 1 }}
     >
       {/* Top row: priority + lead avatar */}
       <div className="flex items-start justify-between mb-2.5">
@@ -88,14 +93,58 @@ function ProjectCard({ project, team, tasks, onClick }) {
   );
 }
 
-export default function ProjectBoard({ projects, team, tasks, onOpenDetail, onNewProject }) {
+export default function ProjectBoard({ projects, team, tasks, onOpenDetail, onNewProject, onUpdate }) {
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+  const dragProjectRef = useRef(null);
+
+  const handleDragStart = (e, project) => {
+    dragProjectRef.current = project;
+    setDraggingId(project.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setDraggingId(null);
+    setDragOverCol(null);
+    dragProjectRef.current = null;
+  };
+
+  const handleDragOver = (e, colId) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverCol(colId);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverCol(null);
+  };
+
+  const handleDrop = (e, colId) => {
+    e.preventDefault();
+    const project = dragProjectRef.current;
+    if (project && project.status !== colId && onUpdate) {
+      onUpdate(project.id, { status: colId });
+    }
+    setDraggingId(null);
+    setDragOverCol(null);
+    dragProjectRef.current = null;
+  };
+
   return (
     <div className="overflow-x-auto">
       <div className="flex gap-5 min-w-[820px] pb-4">
         {PROJECT_STATUSES.map(col => {
           const colProjects = projects.filter(p => p.status === col.id);
+          const isOver = dragOverCol === col.id;
           return (
-            <div key={col.id} className="flex-1 min-w-[200px]">
+            <div
+              key={col.id}
+              className="flex-1 min-w-[200px]"
+              onDragOver={e => handleDragOver(e, col.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={e => handleDrop(e, col.id)}
+            >
               {/* Column header */}
               <div className="flex items-center justify-between mb-3 px-1">
                 <div className="flex items-center gap-2">
@@ -115,18 +164,27 @@ export default function ProjectBoard({ projects, team, tasks, onOpenDetail, onNe
                 </div>
               </div>
 
-              {/* Cards */}
-              <div className="space-y-2.5">
+              {/* Drop zone */}
+              <div
+                className="space-y-2.5 rounded-xl transition-all min-h-[60px] p-1.5 -m-1.5"
+                style={{
+                  background: isOver ? `${col.color}12` : 'transparent',
+                  outline: isOver ? `2px dashed ${col.color}60` : '2px dashed transparent',
+                }}
+              >
                 {colProjects.map(project => (
                   <ProjectCard
                     key={project.id}
                     project={project}
                     team={team}
                     tasks={tasks}
-                    onClick={() => onOpenDetail(project)}
+                    onClick={() => !draggingId && onOpenDetail(project)}
+                    onDragStart={e => handleDragStart(e, project)}
+                    onDragEnd={handleDragEnd}
+                    isDragging={draggingId === project.id}
                   />
                 ))}
-                {/* Add new project in Planning column */}
+                {/* Add new project button in Planning column */}
                 {col.id === 'planning' && (
                   <button
                     onClick={onNewProject}
@@ -134,6 +192,15 @@ export default function ProjectBoard({ projects, team, tasks, onOpenDetail, onNe
                   >
                     + New Project
                   </button>
+                )}
+                {/* Drop indicator for empty columns */}
+                {isOver && colProjects.length === 0 && col.id !== 'planning' && (
+                  <div
+                    className="h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-[11px] font-mono"
+                    style={{ borderColor: col.color, color: col.color }}
+                  >
+                    Drop here
+                  </div>
                 )}
               </div>
             </div>
