@@ -192,6 +192,8 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
         ...form,
         assignee_ids: form.assignee_ids,
         assignee_id: form.assignee_ids[0] || null,  // backward compat
+        drive_file_url: form.drive_file_url.trim() || null,
+        drive_file_name: form.drive_file_name.trim() || null,
       });
       onClose();
     } catch (err) {

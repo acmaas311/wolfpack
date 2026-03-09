@@ -163,7 +163,7 @@ export function useDesigns() {
       .select('*')
       .single();
 
-    if (error) { console.error('Update design error:', error); return null; }
+    if (error) { console.error('Update design error:', error); throw error; }
     setDesigns(prev => prev.map(d => d.id === id ? data : d));
 
     if (updates.status === 'listed' && actorId) {
