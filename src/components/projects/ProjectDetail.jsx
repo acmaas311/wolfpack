@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Avatar, PriorityDot, formStyles } from '../shared/UI';
 import ProjectModal from './ProjectModal';
+import TaskEditModal from '../tasks/TaskEditModal';
 
 const STATUS_LABELS = {
   planning: { label: 'Planning', color: '#94A3B8' },
@@ -35,9 +36,10 @@ function fmtBudget(b) {
   return '$' + Number(b).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function ProjectDetail({ project, team, tasks, onUpdate, onDelete, onBack }) {
+export default function ProjectDetail({ project, team, tasks, onUpdate, onDelete, onBack, onTaskUpdate, onTaskDelete }) {
   const [showEdit, setShowEdit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
   const lead = team.find(m => m.id === project.lead_id);
   const projectTasks = tasks.filter(t => Number(t.project_id) === Number(project.id));
   const doneTasks = projectTasks.filter(t => t.status === 'done').length;
@@ -156,9 +158,10 @@ export default function ProjectDetail({ project, team, tasks, onUpdate, onDelete
                   {projectTasks.map(task => {
                     const assignee = team.find(m => m.id === task.assignee_id);
                     return (
-                      <div
+                      <button
                         key={task.id}
-                        className="flex items-center gap-3 px-3 py-2.5 bg-slate-50 rounded-lg border border-slate-100"
+                        onClick={() => setEditingTask(task)}
+                        className="flex items-center gap-3 px-3 py-2.5 bg-slate-50 rounded-lg border border-slate-100 w-full text-left transition-colors hover:bg-orange-50 hover:border-orange-200 cursor-pointer"
                       >
                         <div
                           className="w-2 h-2 rounded-full flex-shrink-0"
@@ -171,7 +174,8 @@ export default function ProjectDetail({ project, team, tasks, onUpdate, onDelete
                           </div>
                         </div>
                         {assignee && <Avatar member={assignee} size={20} />}
-                      </div>
+                        <span className="text-[10px] text-slate-300 flex-shrink-0">→</span>
+                      </button>
                     );
                   })}
                 </div>
@@ -242,6 +246,19 @@ export default function ProjectDetail({ project, team, tasks, onUpdate, onDelete
           team={team}
           onUpdate={onUpdate}
           onClose={() => setShowEdit(false)}
+        />
+      )}
+
+      {/* Task detail modal — opens when a linked task row is clicked */}
+      {editingTask && onTaskUpdate && (
+        <TaskEditModal
+          task={editingTask}
+          team={team}
+          designs={[]}
+          projects={[project]}
+          onSave={(id, updates) => { onTaskUpdate(id, updates); setEditingTask(null); }}
+          onDelete={onTaskDelete ? (id) => { onTaskDelete(id); setEditingTask(null); } : null}
+          onClose={() => setEditingTask(null)}
         />
       )}
     </div>

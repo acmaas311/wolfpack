@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, Avatar, PriorityDot, StatusPill, Overlay, UnsavedChangesDialog, formStyles } from '../shared/UI';
 import MultiAssigneeSelect, { AvatarStack } from '../shared/MultiAssigneeSelect';
 import DriveFilePicker from '../shared/DriveFilePicker';
+import TaskEditModal from '../tasks/TaskEditModal';
 import { useAuth } from '../../hooks/useAuth';
 import { ensureFreshSession } from '../../lib/supabase';
 
@@ -303,7 +304,7 @@ function DesignCreateModal({ team, onCreate, onClose }) {
 }
 
 // ─── Design Detail Modal ───
-function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
+function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose, onTaskUpdate, onTaskDelete }) {
   const initialForm = {
     name: design.name,
     status: design.status,
@@ -322,6 +323,7 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
   const [saveError, setSaveError] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(initialFormRef.current);
   const handleClose = () => {
@@ -461,15 +463,20 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
                 {relatedTasks.map(t => {
                   const mem = team.find(m => m.id === t.assignee_id);
                   return (
-                    <div key={t.id} className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
+                    <button
+                      key={t.id}
+                      onClick={() => setEditingTask(t)}
+                      className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100 w-full text-left transition-colors hover:bg-orange-50 hover:border-orange-200 cursor-pointer"
+                    >
                       <PriorityDot priority={t.priority} />
-                      <span className="text-[13px] text-slate-900 flex-1 font-medium">{t.title}</span>
+                      <span className="text-[13px] text-slate-900 flex-1 font-medium truncate">{t.title}</span>
                       {mem && <Avatar member={mem} size={20} />}
                       <StatusPill
                         label={COLUMNS.find(c => c.id === t.status)?.label}
                         color={t.status === 'done' ? '#10B981' : t.status === 'in-progress' ? '#FF6B35' : '#94A3B8'}
                       />
-                    </div>
+                      <span className="text-[10px] text-slate-300 flex-shrink-0">→</span>
+                    </button>
                   );
                 })}
               </div>
@@ -526,12 +533,22 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
         onKeepEditing={() => setConfirmClose(false)}
       />
     )}
+    {editingTask && onTaskUpdate && (
+      <TaskEditModal
+        task={editingTask}
+        team={team}
+        designs={[design]}
+        onSave={(id, updates) => { onTaskUpdate(id, updates); setEditingTask(null); }}
+        onDelete={onTaskDelete ? (id) => { onTaskDelete(id); setEditingTask(null); } : null}
+        onClose={() => setEditingTask(null)}
+      />
+    )}
     </>
   );
 }
 
 // ─── Design Card ───
-function DesignCard({ design, team, tasks, onUpdate, onDelete }) {
+function DesignCard({ design, team, tasks, onUpdate, onDelete, onTaskUpdate, onTaskDelete }) {
   const [modal, setModal] = useState(false);
   const assigneeIds = Array.isArray(design.assignee_ids) && design.assignee_ids.length > 0
     ? design.assignee_ids.map(String)
@@ -603,7 +620,7 @@ function DesignCard({ design, team, tasks, onUpdate, onDelete }) {
           </div>
         </div>
       </Card>
-      {modal && <DesignDetailModal design={design} team={team} tasks={tasks} onSave={onUpdate} onDelete={onDelete} onClose={() => setModal(false)} />}
+      {modal && <DesignDetailModal design={design} team={team} tasks={tasks} onSave={onUpdate} onDelete={onDelete} onClose={() => setModal(false)} onTaskUpdate={onTaskUpdate} onTaskDelete={onTaskDelete} />}
     </>
   );
 }
@@ -641,7 +658,7 @@ function ViewDropdown({ view, options, onChange }) {
 }
 
 // ─── Design Table View ───
-function DesignTableView({ designs, team, tasks, onUpdate, onDelete }) {
+function DesignTableView({ designs, team, tasks, onUpdate, onDelete, onTaskUpdate, onTaskDelete }) {
   const [modal, setModal] = useState(null);
   const [sortKey, setSortKey] = useState('status');
   const [sortDir, setSortDir] = useState('asc');
@@ -774,6 +791,8 @@ function DesignTableView({ designs, team, tasks, onUpdate, onDelete }) {
           onSave={onUpdate}
           onDelete={onDelete}
           onClose={() => setModal(null)}
+          onTaskUpdate={onTaskUpdate}
+          onTaskDelete={onTaskDelete}
         />
       )}
     </>
@@ -781,7 +800,7 @@ function DesignTableView({ designs, team, tasks, onUpdate, onDelete }) {
 }
 
 // ─── Design Pipeline (Kanban + Table) ───
-export default function DesignPipeline({ designs, team, tasks, onUpdate, onCreate, onDelete }) {
+export default function DesignPipeline({ designs, team, tasks, onUpdate, onCreate, onDelete, onTaskUpdate, onTaskDelete }) {
   const [view, setView] = useState('cards');
   const [dragOverCol, setDragOverCol] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -840,7 +859,7 @@ export default function DesignPipeline({ designs, team, tasks, onUpdate, onCreat
                   }}
                 >
                   {stageDesigns.map(d => (
-                    <DesignCard key={d.id} design={d} team={team} tasks={tasks} onUpdate={onUpdate} onDelete={onDelete} />
+                    <DesignCard key={d.id} design={d} team={team} tasks={tasks} onUpdate={onUpdate} onDelete={onDelete} onTaskUpdate={onTaskUpdate} onTaskDelete={onTaskDelete} />
                   ))}
                 </div>
               </div>
@@ -852,7 +871,7 @@ export default function DesignPipeline({ designs, team, tasks, onUpdate, onCreat
 
       {/* Table View */}
       {view === 'table' && (
-        <DesignTableView designs={designs} team={team} tasks={tasks} onUpdate={onUpdate} onDelete={onDelete} />
+        <DesignTableView designs={designs} team={team} tasks={tasks} onUpdate={onUpdate} onDelete={onDelete} onTaskUpdate={onTaskUpdate} onTaskDelete={onTaskDelete} />
       )}
 
       {showCreateModal && (

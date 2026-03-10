@@ -30,7 +30,7 @@ function ViewDropdown({ view, onChange }) {
   );
 }
 
-export default function ProjectsView({ projects, team, tasks, onCreate, onUpdate, onDelete }) {
+export default function ProjectsView({ projects, team, tasks, onCreate, onUpdate, onDelete, onTaskUpdate, onTaskDelete }) {
   const [view, setView] = useState('board');
   const [detailProject, setDetailProject] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -47,6 +47,8 @@ export default function ProjectsView({ projects, team, tasks, onCreate, onUpdate
         onUpdate={onUpdate}
         onDelete={onDelete}
         onBack={() => setDetailProject(null)}
+        onTaskUpdate={onTaskUpdate}
+        onTaskDelete={onTaskDelete}
       />
     );
   }

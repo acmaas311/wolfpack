@@ -197,6 +197,8 @@ function AuthenticatedApp({ user, teamMember, signOut }) {
                 onCreate={createProject}
                 onUpdate={updateProject}
                 onDelete={deleteProject}
+                onTaskUpdate={handleTaskUpdate}
+                onTaskDelete={deleteTask}
               />
             )}
             {activeTab === 'sales' && <SalesDashboard />}
@@ -208,6 +210,8 @@ function AuthenticatedApp({ user, teamMember, signOut }) {
                 onUpdate={handleDesignUpdate}
                 onCreate={createDesign}
                 onDelete={deleteDesign}
+                onTaskUpdate={handleTaskUpdate}
+                onTaskDelete={deleteTask}
               />
             )}
             {activeTab === 'files' && (
