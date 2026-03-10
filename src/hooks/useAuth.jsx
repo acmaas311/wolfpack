@@ -15,6 +15,26 @@ export function AuthProvider({ children }) {
     () => sessionStorage.getItem('_gat') || null
   );
 
+  // ─── Page Visibility: reconnect when tab regains focus ────────────────────
+  // Browsers (especially Chrome) throttle background tabs: they freeze JS timers
+  // and can close idle TCP/WebSocket connections. When the user returns to the
+  // tab after ~5 minutes, the Supabase Realtime WebSocket channels and the HTTP
+  // connection pool may need to re-establish. By proactively calling getSession()
+  // the moment the tab becomes visible, we kick off that reconnection in the
+  // background — so by the time the user clicks Save (a second or two later)
+  // the connection is already warm and the save completes instantly.
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        supabase.auth.getSession().catch(() => {
+          // Session may have genuinely expired — onAuthStateChange will handle it
+        });
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   useEffect(() => {
     // Safety timeout — if Supabase never responds (e.g. network issue),
     // unblock the UI after 10 seconds so users aren't stuck forever.

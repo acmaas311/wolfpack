@@ -23,9 +23,28 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // here — before the save timeout starts — so the 45-second timeout only
 // counts actual database write time, not token-refresh latency.
 export async function ensureFreshSession() {
-  const { data, error } = await supabase.auth.getSession();
-  if (error || !data?.session) throw new Error('Your session has expired. Please sign in again.');
-  return data.session;
+  // Race the session check against a 10-second timeout.
+  // If the browser just woke up from throttling and the network is slow,
+  // we fail fast with a clear message rather than silently hanging until
+  // the 45-second save timeout fires.
+  let timeoutId;
+  try {
+    const result = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('Connection is slow — please wait a moment and try again.')),
+          10000
+        );
+      }),
+    ]);
+    if (result.error || !result.data?.session) {
+      throw new Error('Your session has expired. Please sign in again.');
+    }
+    return result.data.session;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // ─── Auth helpers ───
