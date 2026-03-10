@@ -43,7 +43,12 @@ export async function ensureFreshSession() {
       return null;
     }
     if (result.error || !result.data?.session) {
-      throw new Error('Your session has expired. Please sign in again.');
+      // Don't throw here — the JWT is valid for 3600 s and the Supabase client
+      // may transiently return a null session while its internal lock is held
+      // (e.g. during an auto-refresh or a cold reconnect after tab inactivity).
+      // Proceeding lets the actual DB write attempt succeed with the stored JWT.
+      console.warn('ensureFreshSession: no active session in client cache, proceeding with save attempt');
+      return null;
     }
     return result.data.session;
   } finally {

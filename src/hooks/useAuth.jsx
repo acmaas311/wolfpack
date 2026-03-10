@@ -74,7 +74,15 @@ export function AuthProvider({ children }) {
         if (session?.user) {
           hadSession = true;
           setSessionExpired(false);
-          await loadTeamMember(session.user);
+          // TOKEN_REFRESHED just swaps the JWT — the user and their team-member
+          // row haven't changed.  Re-querying the DB here is unnecessary and can
+          // transiently return null (if the new token isn't accepted yet by the
+          // PostgREST layer), which would incorrectly show the "Session Expired"
+          // screen and close any open modals.  Skip the DB round-trip; keep the
+          // existing teamMember state intact.
+          if (event !== 'TOKEN_REFRESHED') {
+            await loadTeamMember(session.user);
+          }
         } else {
           // SIGNED_OUT can fire either because the user clicked Sign Out
           // (hadSession may be true) or because the refresh token expired
