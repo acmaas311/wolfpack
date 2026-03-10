@@ -117,34 +117,34 @@ function AuthenticatedApp({ user, teamMember, signOut }) {
   const handleDecisionCreate = (form) => createDecision(form, teamMember?.id);
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden">
+      {/* overflow-x-hidden on the root prevents any child from pushing the page wider than the viewport */}
       {/* Header */}
-      <header className="px-4 sm:px-7 py-3 sm:py-4 bg-white border-b border-slate-200 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-2.5 sm:gap-3.5">
+      <header className="px-3 sm:px-7 py-3 sm:py-4 bg-white border-b border-slate-200 flex items-center justify-between sticky top-0 z-10 w-full">
+        <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
           <div
-            className="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] rounded-lg flex items-center justify-center text-sm sm:text-base font-extrabold text-white flex-shrink-0"
+            className="w-[28px] h-[28px] sm:w-[34px] sm:h-[34px] rounded-lg flex items-center justify-center text-sm sm:text-base font-extrabold text-white flex-shrink-0"
             style={{ background: 'linear-gradient(135deg, #FF6B35, #1D428A)' }}
           >
             W
           </div>
-          <div>
-            <span className="text-[15px] sm:text-[17px] font-extrabold text-slate-900">Wolfpack</span>
+          <div className="min-w-0">
+            <span className="text-[14px] sm:text-[17px] font-extrabold text-slate-900">Wolfpack</span>
             {/* Hide subtitle on small screens to save space */}
             <span className="hidden sm:inline text-[11px] text-slate-400 ml-2 font-mono">Command Center</span>
           </div>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
           {/* Team avatars — hidden on mobile to save header space */}
           <div className="hidden sm:flex items-center gap-1.5">
             {team.map(m => <Avatar key={m.id} member={m} size={28} />)}
           </div>
           {teamMember && (
-            <div className="flex items-center gap-2 sm:ml-2 sm:pl-3 sm:border-l sm:border-slate-200">
-              {/* Show first name only on mobile */}
-              <span className="text-xs text-slate-500 hidden xs:inline sm:inline">{teamMember.name.split(' ')[0]}</span>
+            <div className="flex items-center gap-1 sm:gap-2 sm:ml-2 sm:pl-3 sm:border-l sm:border-slate-200">
+              <span className="text-xs text-slate-500 hidden sm:inline">{teamMember.name.split(' ')[0]}</span>
               <button
                 onClick={signOut}
-                className="text-[10px] sm:text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer bg-transparent border-none font-mono px-2 py-1 rounded hover:bg-slate-100 transition-colors"
+                className="text-[11px] sm:text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer bg-transparent border-none font-mono px-2 py-1 rounded hover:bg-slate-100 transition-colors whitespace-nowrap"
               >
                 Sign out
               </button>
@@ -154,7 +154,7 @@ function AuthenticatedApp({ user, teamMember, signOut }) {
       </header>
 
       {/* Tabs — horizontally scrollable on mobile */}
-      <nav className="px-2 sm:px-7 bg-white border-b border-slate-200 flex sticky top-[53px] sm:top-[65px] z-10 overflow-x-auto scrollbar-hide">
+      <nav className="px-1 sm:px-7 bg-white border-b border-slate-200 flex sticky top-[49px] sm:top-[65px] z-10 overflow-x-auto scrollbar-hide w-full">
         {TABS.map(tab => (
           <button
             key={tab.id}
@@ -171,7 +171,7 @@ function AuthenticatedApp({ user, teamMember, signOut }) {
       </nav>
 
       {/* Content */}
-      <main className="px-4 sm:px-7 py-4 sm:py-6 max-w-[1100px] mx-auto">
+      <main className="px-3 sm:px-7 py-4 sm:py-6 max-w-[1100px] mx-auto w-full min-w-0">
         {loading ? (
           <div className="py-20 text-center text-slate-400 text-sm">Loading data...</div>
         ) : (

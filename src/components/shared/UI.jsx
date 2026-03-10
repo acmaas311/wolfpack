@@ -191,6 +191,56 @@ export function DatePopover({ anchorRect, currentDate, onSelect, onClose }) {
   );
 }
 
+// ─── Unsaved Changes Dialog ───
+// Shows when a user tries to close a modal that has unsaved changes.
+// Render it as a sibling AFTER the <Overlay> in a React fragment — it sits on
+// top via z-[150] (above the Overlay's z-[100]).
+export function UnsavedChangesDialog({ onDiscard, onSave, onKeepEditing, saving = false }) {
+  return (
+    <div
+      // stopPropagation prevents this overlay from bubbling to the modal backdrop
+      onClick={e => e.stopPropagation()}
+      className="fixed inset-0 z-[150] flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.55)' }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-[320px]">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-base leading-none">⚠️</span>
+          <h3 className="text-sm font-bold text-slate-900">Unsaved changes</h3>
+        </div>
+        <p className="text-xs text-slate-500 mb-5 leading-relaxed">
+          You have unsaved changes. What would you like to do?
+        </p>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white border-none cursor-pointer transition-colors"
+            style={{
+              background: 'linear-gradient(135deg, #FF6B35, #e85a22)',
+              opacity: saving ? 0.55 : 1,
+            }}
+          >
+            {saving ? 'Saving…' : 'Save & close'}
+          </button>
+          <button
+            onClick={onDiscard}
+            className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200 cursor-pointer transition-colors"
+          >
+            Discard changes
+          </button>
+          <button
+            onClick={onKeepEditing}
+            className="w-full px-4 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+          >
+            Keep editing
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Shared form field styles ───
 export const formStyles = {
   label: 'block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 font-mono',

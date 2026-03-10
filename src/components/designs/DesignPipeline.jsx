@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Card, Avatar, PriorityDot, StatusPill, Overlay, formStyles } from '../shared/UI';
+import { useState, useEffect, useRef } from 'react';
+import { Card, Avatar, PriorityDot, StatusPill, Overlay, UnsavedChangesDialog, formStyles } from '../shared/UI';
 import MultiAssigneeSelect, { AvatarStack } from '../shared/MultiAssigneeSelect';
 import DriveFilePicker from '../shared/DriveFilePicker';
+import { useAuth } from '../../hooks/useAuth';
 
 // ─── Drive thumbnail helpers ───────────────────────────────────────────────
 // Extract the file ID from any common Google Drive / Docs / Slides / Sheets URL.
@@ -16,11 +17,111 @@ function extractDriveFileId(url) {
   return null;
 }
 
-// Returns a URL that renders as an image for image/PDF files stored in Drive.
-// For Docs/Slides/Sheets, Drive won't serve a thumbnail via this endpoint, so
-// we fall back to the generic Drive preview iframe thumbnail approach.
-function getDriveThumbnailUrl(fileId) {
-  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+// ─── DriveThumbnail ────────────────────────────────────────────────────────
+// Fetches the Drive thumbnail using the OAuth access token so it works on iOS
+// Safari (which blocks the cross-origin drive.google.com cookie via ITP).
+// Falls back to a simple Drive badge if the fetch fails or no token is present.
+function DriveThumbnail({ fileId, driveFileUrl, driveFileName, height = 120 }) {
+  const { googleAccessToken } = useAuth();
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [status, setStatus] = useState('loading'); // 'loading' | 'ok' | 'error'
+  const prevBlobRef = useRef(null);
+
+  useEffect(() => {
+    if (!fileId) { setStatus('error'); return; }
+
+    let cancelled = false;
+    setStatus('loading');
+    setBlobUrl(null);
+
+    const fetchThumb = async () => {
+      try {
+        // Step 1: get the thumbnailLink from the Drive Files API (requires the
+        // access token — avoids any cross-origin cookie dependency).
+        const meta = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`,
+          googleAccessToken
+            ? { headers: { Authorization: `Bearer ${googleAccessToken}` } }
+            : {}
+        );
+        if (!meta.ok) throw new Error('meta failed');
+        const { thumbnailLink } = await meta.json();
+        if (!thumbnailLink) throw new Error('no thumbnail');
+
+        // Step 2: fetch the actual image bytes (the thumbnailLink is already an
+        // authenticated googleapis.com URL, but fetch it here anyway so we have
+        // a blob:// URL — avoids any further cookie issues on iOS).
+        const imgResp = await fetch(
+          thumbnailLink.replace(/=s\d+$/, '=s400'), // request a slightly larger size
+          googleAccessToken
+            ? { headers: { Authorization: `Bearer ${googleAccessToken}` } }
+            : {}
+        );
+        if (!imgResp.ok) throw new Error('img fetch failed');
+        const blob = await imgResp.blob();
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        // Revoke the previous blob to avoid memory leaks
+        if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
+        prevBlobRef.current = url;
+        setBlobUrl(url);
+        setStatus('ok');
+      } catch {
+        if (!cancelled) setStatus('error');
+      }
+    };
+
+    fetchThumb();
+    return () => { cancelled = true; };
+  }, [fileId, googleAccessToken]);
+
+  // Clean up blob URL on unmount
+  useEffect(() => () => { if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current); }, []);
+
+  if (status === 'ok' && blobUrl) {
+    return (
+      <img
+        src={blobUrl}
+        alt="Design preview"
+        className="w-full object-cover border-b border-slate-100"
+        style={{ height }}
+      />
+    );
+  }
+
+  if (status === 'error') {
+    // Non-image file or fetch failed — show a compact Drive badge
+    return (
+      <a
+        href={driveFileUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={e => e.stopPropagation()}
+        className="flex items-center justify-center gap-2 border-b border-slate-100 bg-slate-50 text-slate-400 text-xs font-medium"
+        style={{ height: 80 }}
+      >
+        <svg width="14" height="14" viewBox="0 0 87.3 78" fill="none">
+          <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L27.5 53H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+          <path d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 48.5A9 9 0 000 53h27.5z" fill="#00ac47"/>
+          <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.85 11.5z" fill="#ea4335"/>
+          <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+          <path d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+          <path d="M73.4 26.5l-12.6-21.8C59.6 3.1 58.45 2 57.1 1.2L43.35 25 59.6 53h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+        </svg>
+        {driveFileName
+          ? (driveFileName.length > 22 ? driveFileName.slice(0, 22) + '…' : driveFileName)
+          : 'Open in Drive'}
+      </a>
+    );
+  }
+
+  // Loading skeleton
+  return (
+    <div
+      className="w-full border-b border-slate-100 bg-slate-100 animate-pulse"
+      style={{ height }}
+    />
+  );
 }
 
 const D_STAGES = [
@@ -39,7 +140,7 @@ const COLUMNS = [
 
 // ─── New Design Modal ───
 function DesignCreateModal({ team, onCreate, onClose }) {
-  const [form, setForm] = useState({
+  const initialForm = {
     name: '',
     status: 'concept',
     assignee_ids: [],
@@ -48,9 +149,17 @@ function DesignCreateModal({ team, onCreate, onClose }) {
     platforms: [],
     drive_file_url: '',
     drive_file_name: '',
-  });
+  };
+  const initialFormRef = useRef(initialForm);
+  const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [confirmClose, setConfirmClose] = useState(false);
+
+  const isDirty = JSON.stringify(form) !== JSON.stringify(initialFormRef.current);
+  const handleClose = () => {
+    if (isDirty && !saving) { setConfirmClose(true); } else { onClose(); }
+  };
 
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const { label: lbl, input: inp, btnPrimary: bp, btnSecondary: bs } = formStyles;
@@ -102,11 +211,12 @@ function DesignCreateModal({ team, onCreate, onClose }) {
   };
 
   return (
-    <Overlay onClose={onClose}>
+    <>
+    <Overlay onClose={handleClose}>
       <div className="bg-white rounded-2xl w-full max-w-[480px] max-h-[85vh] overflow-auto shadow-2xl border border-slate-200">
         <div className="px-6 pt-5 pb-3.5 border-b border-slate-100 flex items-center justify-between">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">New Design</span>
-          <button onClick={onClose} className="text-lg text-slate-400 hover:bg-slate-100 px-2 py-0.5 rounded-md cursor-pointer">×</button>
+          <button onClick={handleClose} className="text-lg text-slate-400 hover:bg-slate-100 px-2 py-0.5 rounded-md cursor-pointer">×</button>
         </div>
         <div className="p-6">
           <div className="mb-5">
@@ -176,7 +286,7 @@ function DesignCreateModal({ team, onCreate, onClose }) {
             </div>
           )}
           <div className="flex gap-2.5 justify-end">
-            <button onClick={onClose} className={bs}>Cancel</button>
+            <button onClick={handleClose} className={bs}>Cancel</button>
             <button
               onClick={handleCreate}
               disabled={!form.name.trim() || saving}
@@ -189,12 +299,21 @@ function DesignCreateModal({ team, onCreate, onClose }) {
         </div>
       </div>
     </Overlay>
+    {confirmClose && (
+      <UnsavedChangesDialog
+        saving={saving}
+        onSave={async () => { setConfirmClose(false); await handleCreate(); }}
+        onDiscard={onClose}
+        onKeepEditing={() => setConfirmClose(false)}
+      />
+    )}
+    </>
   );
 }
 
 // ─── Design Detail Modal ───
 function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
-  const [form, setForm] = useState({
+  const initialForm = {
     name: design.name,
     status: design.status,
     assignee_ids: Array.isArray(design.assignee_ids) && design.assignee_ids.length > 0
@@ -205,10 +324,18 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
     platforms: design.platforms || [],
     drive_file_url: design.drive_file_url || '',
     drive_file_name: design.drive_file_name || '',
-  });
+  };
+  const initialFormRef = useRef(initialForm);
+  const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+
+  const isDirty = JSON.stringify(form) !== JSON.stringify(initialFormRef.current);
+  const handleClose = () => {
+    if (isDirty && !saving) { setConfirmClose(true); } else { onClose(); }
+  };
 
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const relatedTasks = tasks.filter(t => t.design_id === design.id);
@@ -252,11 +379,12 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
   };
 
   return (
-    <Overlay onClose={onClose}>
+    <>
+    <Overlay onClose={handleClose}>
       <div className="bg-white rounded-2xl w-full max-w-[540px] max-h-[88vh] overflow-auto shadow-2xl border border-slate-200">
         <div className="px-6 pt-5 pb-3.5 border-b border-slate-100 flex justify-between">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">Design Details</span>
-          <button onClick={onClose} className="text-lg text-slate-400 hover:bg-slate-100 px-2 py-0.5 rounded-md cursor-pointer">×</button>
+          <button onClick={handleClose} className="text-lg text-slate-400 hover:bg-slate-100 px-2 py-0.5 rounded-md cursor-pointer">×</button>
         </div>
         <div className="p-6">
           <div className="mb-5">
@@ -366,7 +494,7 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
               )
             )}
             <div className="flex gap-2.5 ml-auto">
-              <button onClick={onClose} disabled={saving} className={bs}>Cancel</button>
+              <button onClick={handleClose} disabled={saving} className={bs}>Cancel</button>
               <button
                 onClick={handleSave}
                 disabled={saving}
@@ -380,25 +508,30 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
         </div>
       </div>
     </Overlay>
+    {confirmClose && (
+      <UnsavedChangesDialog
+        saving={saving}
+        onSave={async () => { setConfirmClose(false); await handleSave(); }}
+        onDiscard={onClose}
+        onKeepEditing={() => setConfirmClose(false)}
+      />
+    )}
+    </>
   );
 }
 
 // ─── Design Card ───
 function DesignCard({ design, team, tasks, onUpdate, onDelete }) {
   const [modal, setModal] = useState(false);
-  const [thumbError, setThumbError] = useState(false);
   const assigneeIds = Array.isArray(design.assignee_ids) && design.assignee_ids.length > 0
     ? design.assignee_ids.map(String)
     : (design.assignee_id ? [String(design.assignee_id)] : []);
   const relCount = tasks.filter(t => t.design_id === design.id).length;
 
-  // Prefer an uploaded image; fall back to Drive thumbnail.
+  // Prefer an uploaded image; fall back to Drive thumbnail via OAuth (works on iOS Safari).
   const driveFileId = !design.image_path && design.drive_file_url
     ? extractDriveFileId(design.drive_file_url)
     : null;
-  const thumbUrl = design.image_path || (driveFileId && !thumbError
-    ? getDriveThumbnailUrl(driveFileId)
-    : null);
 
   return (
     <>
@@ -410,36 +543,20 @@ function DesignCard({ design, team, tasks, onUpdate, onDelete }) {
         className="mb-2 overflow-hidden"
       >
         {/* ── Preview area ── */}
-        {thumbUrl ? (
+        {design.image_path ? (
           <img
-            src={thumbUrl}
+            src={design.image_path}
             alt={design.name}
-            onError={() => setThumbError(true)}
             className="w-full object-cover border-b border-slate-100"
             style={{ height: 120 }}
           />
-        ) : driveFileId && thumbError ? (
-          /* Thumbnail failed (e.g. Docs/Slides) — show a tappable Drive badge */
-          <a
-            href={design.drive_file_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            className="flex items-center justify-center gap-2 border-b border-slate-100 bg-slate-50 text-slate-400 text-xs font-medium"
-            style={{ height: 80 }}
-          >
-            <svg width="14" height="14" viewBox="0 0 87.3 78" fill="none">
-              <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L27.5 53H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-              <path d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 48.5A9 9 0 000 53h27.5z" fill="#00ac47"/>
-              <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.85 11.5z" fill="#ea4335"/>
-              <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
-              <path d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
-              <path d="M73.4 26.5l-12.6-21.8C59.6 3.1 58.45 2 57.1 1.2L43.35 25 59.6 53h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
-            </svg>
-            {design.drive_file_name
-              ? (design.drive_file_name.length > 22 ? design.drive_file_name.slice(0, 22) + '…' : design.drive_file_name)
-              : 'Open in Drive'}
-          </a>
+        ) : driveFileId ? (
+          /* Use DriveThumbnail which fetches via OAuth token — avoids iOS Safari ITP */
+          <DriveThumbnail
+            fileId={driveFileId}
+            driveFileUrl={design.drive_file_url}
+            driveFileName={design.drive_file_name}
+          />
         ) : null}
 
         <div className="p-3">

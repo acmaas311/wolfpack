@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Overlay, formStyles } from '../shared/UI';
+import { useState, useRef } from 'react';
+import { Overlay, UnsavedChangesDialog, formStyles } from '../shared/UI';
 import { openTaskAssignmentEmail } from '../../lib/gmail';
 import DriveFilePicker from '../shared/DriveFilePicker';
 import MultiAssigneeSelect from '../shared/MultiAssigneeSelect';
@@ -17,7 +17,10 @@ export default function TaskEditModal({ task, team, designs, projects = [], onSa
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
-  const [form, setForm] = useState({
+  const [confirmClose, setConfirmClose] = useState(false);
+
+  // Build the initial form once so we can compare for dirty detection
+  const initialForm = {
     title: task.title,
     description: task.description || '',
     assignee_ids: Array.isArray(task.assignee_ids) && task.assignee_ids.length > 0
@@ -31,7 +34,16 @@ export default function TaskEditModal({ task, team, designs, projects = [], onSa
     project_id: task.project_id || null,
     drive_file_url: task.drive_file_url || '',
     drive_file_name: task.drive_file_name || '',
-  });
+  };
+  const initialFormRef = useRef(initialForm);
+  const [form, setForm] = useState(initialForm);
+
+  const isDirty = JSON.stringify(form) !== JSON.stringify(initialFormRef.current);
+
+  // Intercept close: show warning if there are unsaved changes
+  const handleClose = () => {
+    if (isDirty && !saving) { setConfirmClose(true); } else { onClose(); }
+  };
 
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const { label: lbl, input: inp, btnPrimary: bp, btnSecondary: bs } = formStyles;
@@ -60,13 +72,14 @@ export default function TaskEditModal({ task, team, designs, projects = [], onSa
   };
 
   return (
-    <Overlay onClose={onClose}>
+    <>
+    <Overlay onClose={handleClose}>
       <div className="bg-white rounded-2xl w-full max-w-[500px] max-h-[88vh] overflow-auto shadow-2xl border border-slate-200">
         <div className="px-6 pt-5 pb-3.5 border-b border-slate-100 flex items-center justify-between">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">
             Edit Task
           </span>
-          <button onClick={onClose} className="text-lg text-slate-400 hover:bg-slate-100 px-2 py-0.5 rounded-md cursor-pointer">
+          <button onClick={handleClose} className="text-lg text-slate-400 hover:bg-slate-100 px-2 py-0.5 rounded-md cursor-pointer">
             ×
           </button>
         </div>
@@ -228,7 +241,7 @@ export default function TaskEditModal({ task, team, designs, projects = [], onSa
               )
             )}
             <div className="flex gap-2.5 ml-auto">
-              <button onClick={onClose} className={bs}>Cancel</button>
+              <button onClick={handleClose} className={bs}>Cancel</button>
               <button
                 onClick={handleSave}
                 disabled={!form.title.trim() || saving}
@@ -242,5 +255,14 @@ export default function TaskEditModal({ task, team, designs, projects = [], onSa
         </div>
       </div>
     </Overlay>
+    {confirmClose && (
+      <UnsavedChangesDialog
+        saving={saving}
+        onSave={async () => { setConfirmClose(false); await handleSave(); }}
+        onDiscard={onClose}
+        onKeepEditing={() => setConfirmClose(false)}
+      />
+    )}
+    </>
   );
 }

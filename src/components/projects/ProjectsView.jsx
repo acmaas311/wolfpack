@@ -54,9 +54,9 @@ export default function ProjectsView({ projects, team, tasks, onCreate, onUpdate
   return (
     <div>
       {/* Toolbar */}
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-3">
-          <h2 className="text-[15px] font-bold text-slate-700">
+      <div className="flex items-center justify-between gap-2 mb-5 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <h2 className="text-[15px] font-bold text-slate-700 whitespace-nowrap">
             Projects
             <span className="ml-2 text-[12px] font-mono text-slate-400">{projects.length}</span>
           </h2>
@@ -64,7 +64,7 @@ export default function ProjectsView({ projects, team, tasks, onCreate, onUpdate
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="px-4 py-2 rounded-lg border-none cursor-pointer text-sm font-bold text-white transition-colors"
+          className="flex-shrink-0 px-3 sm:px-4 py-2 rounded-lg border-none cursor-pointer text-sm font-bold text-white transition-colors whitespace-nowrap"
           style={{ background: 'linear-gradient(135deg, #FF6B35, #e85a22)' }}
         >
           + New Project

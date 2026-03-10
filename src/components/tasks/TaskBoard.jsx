@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Card, Avatar, PriorityDot, AssigneePopover, DatePopover, Toggle, Overlay, formStyles } from '../shared/UI';
+import { useState, useRef } from 'react';
+import { Card, Avatar, PriorityDot, AssigneePopover, DatePopover, Toggle, Overlay, UnsavedChangesDialog, formStyles } from '../shared/UI';
 import MultiAssigneeSelect, { AvatarStack } from '../shared/MultiAssigneeSelect';
 import TaskEditModal from './TaskEditModal';
 import TimelineView from './TimelineView';
@@ -58,7 +58,7 @@ function ViewDropdown({ view, options, onChange }) {
 
 // ─── New Task Modal ───
 function TaskCreateModal({ team, designs, projects = [], onCreate, onClose }) {
-  const [form, setForm] = useState({
+  const initialForm = {
     title: '',
     description: '',
     assignee_ids: [],
@@ -68,9 +68,17 @@ function TaskCreateModal({ team, designs, projects = [], onCreate, onClose }) {
     category: 'design',
     design_id: null,
     project_id: null,
-  });
+  };
+  const initialFormRef = useRef(initialForm);
+  const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [confirmClose, setConfirmClose] = useState(false);
+
+  const isDirty = JSON.stringify(form) !== JSON.stringify(initialFormRef.current);
+  const handleClose = () => {
+    if (isDirty && !saving) { setConfirmClose(true); } else { onClose(); }
+  };
 
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const { label: lbl, input: inp, btnPrimary: bp, btnSecondary: bs } = formStyles;
@@ -102,11 +110,12 @@ function TaskCreateModal({ team, designs, projects = [], onCreate, onClose }) {
   };
 
   return (
-    <Overlay onClose={onClose}>
+    <>
+    <Overlay onClose={handleClose}>
       <div className="bg-white rounded-2xl w-full max-w-[480px] max-h-[85vh] overflow-auto shadow-2xl border border-slate-200">
         <div className="px-6 pt-5 pb-3.5 border-b border-slate-100 flex items-center justify-between">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">New Task</span>
-          <button onClick={onClose} className="text-lg text-slate-400 hover:bg-slate-100 px-2 py-0.5 rounded-md cursor-pointer">×</button>
+          <button onClick={handleClose} className="text-lg text-slate-400 hover:bg-slate-100 px-2 py-0.5 rounded-md cursor-pointer">×</button>
         </div>
         {saveError && (
           <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-mono break-all">
@@ -189,7 +198,7 @@ function TaskCreateModal({ team, designs, projects = [], onCreate, onClose }) {
             </div>
           )}
           <div className="flex gap-2.5 justify-end">
-            <button onClick={onClose} className={bs}>Cancel</button>
+            <button onClick={handleClose} className={bs}>Cancel</button>
             <button
               onClick={handleCreate}
               disabled={!form.title.trim() || saving}
@@ -202,6 +211,15 @@ function TaskCreateModal({ team, designs, projects = [], onCreate, onClose }) {
         </div>
       </div>
     </Overlay>
+    {confirmClose && (
+      <UnsavedChangesDialog
+        saving={saving}
+        onSave={async () => { setConfirmClose(false); await handleCreate(); }}
+        onDiscard={onClose}
+        onKeepEditing={() => setConfirmClose(false)}
+      />
+    )}
+    </>
   );
 }
 
@@ -487,10 +505,10 @@ export default function TaskBoard({ tasks, team, designs, projects = [], onUpdat
   return (
     <div>
       {/* ── Title + View Dropdown ── */}
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 leading-tight">The GARRET Board</h1>
-          <p className="text-[12px] text-slate-400 font-mono mt-0.5 tracking-wide">Grid for Agile Resources, Review, and Execution Tracking</p>
+      <div className="flex items-center justify-between gap-2 mb-3 min-w-0">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-tight">The GARRET Board</h1>
+          <p className="text-[11px] sm:text-[12px] text-slate-400 font-mono mt-0.5 tracking-wide hidden sm:block">Grid for Agile Resources, Review, and Execution Tracking</p>
         </div>
         <ViewDropdown
           view={view}
@@ -503,19 +521,20 @@ export default function TaskBoard({ tasks, team, designs, projects = [], onUpdat
         />
       </div>
 
-      {/* ── Controls: New Task + Filter Pills + Show Done ── */}
+      {/* ── Controls: New Task + Filter + Show Done ── */}
       <div className="flex items-center gap-2 mb-5 flex-wrap">
         <button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-bold text-white border-none cursor-pointer transition-colors"
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-bold text-white border-none cursor-pointer transition-colors flex-shrink-0"
           style={{ background: 'linear-gradient(135deg, #FF6B35, #e85a22)' }}
         >
           <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> New Task
         </button>
+        {/* Email button — hidden on mobile to reduce clutter */}
         <button
           onClick={() => openWeeklySummaryEmail({ tasks, team })}
           title="Generate a weekly summary email of all current tasks"
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border cursor-pointer transition-colors"
+          className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border cursor-pointer transition-colors"
           style={{ background: '#fff', borderColor: '#E2E8F0', color: '#475569' }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
@@ -523,25 +542,47 @@ export default function TaskBoard({ tasks, team, designs, projects = [], onUpdat
           </svg>
           Email Weekly Summary
         </button>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs text-slate-400 font-mono mr-0.5">Filter:</span>
-          {[{ id: 'all', label: 'Everyone' }, ...team.map(m => ({ id: m.id, label: m.name.split(' ')[0] }))].map(opt => (
-            <button
-              key={opt.id}
-              onClick={() => setFilterAssignee(opt.id)}
-              className="px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-              style={{
-                border: '1px solid',
-                borderColor: filterAssignee === opt.id ? '#FF6B35' : '#E8ECF0',
-                background: filterAssignee === opt.id ? 'rgba(255,107,53,0.06)' : '#fff',
-                color: filterAssignee === opt.id ? '#FF6B35' : '#64748B',
-              }}
-            >
-              {opt.id !== 'all' && <Avatar member={team.find(m => m.id === opt.id)} size={18} />}
-              {opt.label}
-            </button>
-          ))}
+
+        {/* Assignee filter — <select> on mobile, pill buttons on desktop */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-400 font-mono">Filter:</span>
+          {/* Mobile: compact dropdown */}
+          <select
+            className="sm:hidden text-xs font-semibold rounded-lg px-2 py-1.5 border cursor-pointer bg-white"
+            style={{
+              borderColor: '#E2E8F0',
+              color: String(filterAssignee) === 'all' ? '#64748B' : '#FF6B35',
+              outline: 'none',
+            }}
+            value={String(filterAssignee)}
+            onChange={e => setFilterAssignee(e.target.value)}
+          >
+            <option value="all">Everyone</option>
+            {team.map(m => (
+              <option key={m.id} value={String(m.id)}>{m.name.split(' ')[0]}</option>
+            ))}
+          </select>
+          {/* Desktop: pill buttons */}
+          <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
+            {[{ id: 'all', label: 'Everyone' }, ...team.map(m => ({ id: m.id, label: m.name.split(' ')[0] }))].map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => setFilterAssignee(opt.id)}
+                className="px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                style={{
+                  border: '1px solid',
+                  borderColor: String(filterAssignee) === String(opt.id) ? '#FF6B35' : '#E8ECF0',
+                  background: String(filterAssignee) === String(opt.id) ? 'rgba(255,107,53,0.06)' : '#fff',
+                  color: String(filterAssignee) === String(opt.id) ? '#FF6B35' : '#64748B',
+                }}
+              >
+                {opt.id !== 'all' && <Avatar member={team.find(m => m.id === opt.id)} size={18} />}
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
+
         <div className="ml-auto">
           <Toggle checked={showDone} onChange={setShowDone} label={`Show completed (${doneCount})`} />
         </div>
