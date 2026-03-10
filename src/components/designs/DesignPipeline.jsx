@@ -24,21 +24,21 @@ function extractDriveFileId(url) {
 // Falls back to a simple Drive badge if the fetch fails or no token is present.
 function DriveThumbnail({ fileId, driveFileUrl, driveFileName, height = 120 }) {
   const { googleAccessToken } = useAuth();
-  const [blobUrl, setBlobUrl] = useState(null);
+  const [thumbUrl, setThumbUrl] = useState(null);
   const [status, setStatus] = useState('loading'); // 'loading' | 'ok' | 'error'
-  const prevBlobRef = useRef(null);
 
   useEffect(() => {
     if (!fileId) { setStatus('error'); return; }
 
     let cancelled = false;
     setStatus('loading');
-    setBlobUrl(null);
+    setThumbUrl(null);
 
     const fetchThumb = async () => {
       try {
-        // Step 1: get the thumbnailLink from the Drive Files API (requires the
-        // access token — avoids any cross-origin cookie dependency).
+        // Fetch the thumbnailLink from the Drive Files API.  googleapis.com
+        // supports CORS with an Authorization header, so this works fine from
+        // the browser.
         const meta = await fetch(
           `https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`,
           googleAccessToken
@@ -49,23 +49,13 @@ function DriveThumbnail({ fileId, driveFileUrl, driveFileName, height = 120 }) {
         const { thumbnailLink } = await meta.json();
         if (!thumbnailLink) throw new Error('no thumbnail');
 
-        // Step 2: fetch the actual image bytes (the thumbnailLink is already an
-        // authenticated googleapis.com URL, but fetch it here anyway so we have
-        // a blob:// URL — avoids any further cookie issues on iOS).
-        const imgResp = await fetch(
-          thumbnailLink.replace(/=s\d+$/, '=s400'), // request a slightly larger size
-          googleAccessToken
-            ? { headers: { Authorization: `Bearer ${googleAccessToken}` } }
-            : {}
-        );
-        if (!imgResp.ok) throw new Error('img fetch failed');
-        const blob = await imgResp.blob();
+        // Use the thumbnailLink directly as the <img> src.
+        // lh3.googleusercontent.com URLs are pre-signed by Google and work
+        // as plain image sources without any auth headers — but they do NOT
+        // support fetch() from a cross-origin page (no CORS headers), so we
+        // must NOT try to proxy them through JS fetch().
         if (cancelled) return;
-        const url = URL.createObjectURL(blob);
-        // Revoke the previous blob to avoid memory leaks
-        if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
-        prevBlobRef.current = url;
-        setBlobUrl(url);
+        setThumbUrl(thumbnailLink.replace(/=s\d+$/, '=s400'));
         setStatus('ok');
       } catch {
         if (!cancelled) setStatus('error');
@@ -76,13 +66,10 @@ function DriveThumbnail({ fileId, driveFileUrl, driveFileName, height = 120 }) {
     return () => { cancelled = true; };
   }, [fileId, googleAccessToken]);
 
-  // Clean up blob URL on unmount
-  useEffect(() => () => { if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current); }, []);
-
-  if (status === 'ok' && blobUrl) {
+  if (status === 'ok' && thumbUrl) {
     return (
       <img
-        src={blobUrl}
+        src={thumbUrl}
         alt="Design preview"
         className="w-full object-cover border-b border-slate-100"
         style={{ height }}
