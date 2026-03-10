@@ -3,6 +3,7 @@ import { Card, Avatar, PriorityDot, StatusPill, Overlay, UnsavedChangesDialog, f
 import MultiAssigneeSelect, { AvatarStack } from '../shared/MultiAssigneeSelect';
 import DriveFilePicker from '../shared/DriveFilePicker';
 import { useAuth } from '../../hooks/useAuth';
+import { ensureFreshSession } from '../../lib/supabase';
 
 // ─── Drive thumbnail helpers ───────────────────────────────────────────────
 // Extract the file ID from any common Google Drive / Docs / Slides / Sheets URL.
@@ -170,6 +171,9 @@ function DesignCreateModal({ team, onCreate, onClose }) {
     setSaveError(null);
     let timeoutId = null;
     try {
+      // Refresh the auth token before saving so the timeout only counts DB write time,
+      // not token-refresh latency after the app has been idle for a while.
+      await ensureFreshSession();
       // Build payload — strip null created_by_id so missing DB column doesn't break insert
       const payload = {
         name: form.name.trim(),
@@ -188,7 +192,7 @@ function DesignCreateModal({ team, onCreate, onClose }) {
       const timeoutPromise = new Promise((_, reject) => {
         timeoutId = setTimeout(
           () => reject(new Error('Request timed out — check your connection and try again.')),
-          25000
+          45000
         );
       });
 
@@ -347,6 +351,9 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
     setSaveError(null);
     let timeoutId = null;
     try {
+      // Refresh the auth token before saving so the timeout only counts DB write time,
+      // not token-refresh latency after the app has been idle for a while.
+      await ensureFreshSession();
       const updates = {
         ...form,
         assignee_ids: form.assignee_ids,
@@ -357,13 +364,13 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
       };
 
       // iOS Safari can silently hang fetch() when the network switches or a
-      // token refresh stalls — race against a 25-second timeout so the button
+      // token refresh stalls — race against a 45-second timeout so the button
       // never stays frozen at "Saving…" forever.
       const savePromise = onSave(design.id, updates);
       const timeoutPromise = new Promise((_, reject) => {
         timeoutId = setTimeout(
           () => reject(new Error('Save timed out — check your connection and try again.')),
-          25000
+          45000
         );
       });
 

@@ -3,6 +3,7 @@ import { Overlay, UnsavedChangesDialog, formStyles } from '../shared/UI';
 import { openTaskAssignmentEmail } from '../../lib/gmail';
 import DriveFilePicker from '../shared/DriveFilePicker';
 import MultiAssigneeSelect from '../shared/MultiAssigneeSelect';
+import { ensureFreshSession } from '../../lib/supabase';
 
 const COLUMNS = [
   { id: 'todo', label: 'To Do' },
@@ -52,8 +53,12 @@ export default function TaskEditModal({ task, team, designs, projects = [], onSa
     if (!form.title.trim() || saving) return;
     setSaving(true);
     setSaveError(null);
+    let timeoutId = null;
     try {
-      await onSave(task.id, {
+      // Refresh the auth token before saving so the timeout only counts DB write time,
+      // not token-refresh latency after the app has been idle for a while.
+      await ensureFreshSession();
+      const savePromise = onSave(task.id, {
         ...form,
         due_date: form.due_date || null,
         design_id: form.design_id || null,
@@ -63,10 +68,18 @@ export default function TaskEditModal({ task, team, designs, projects = [], onSa
         drive_file_url: form.drive_file_url || null,
         drive_file_name: form.drive_file_name || null,
       });
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('Save timed out — check your connection and try again.')),
+          45000
+        );
+      });
+      await Promise.race([savePromise, timeoutPromise]);
       onClose();
     } catch (err) {
       setSaveError(err?.message || 'Save failed — please try again.');
     } finally {
+      clearTimeout(timeoutId);
       setSaving(false);
     }
   };

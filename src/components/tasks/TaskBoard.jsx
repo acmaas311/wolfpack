@@ -5,6 +5,7 @@ import TaskEditModal from './TaskEditModal';
 import TimelineView from './TimelineView';
 import { openWeeklySummaryEmail } from '../../lib/gmail';
 import { notifySlack } from '../../lib/slack';
+import { ensureFreshSession } from '../../lib/supabase';
 
 const COLUMNS = [
   { id: 'todo', label: 'To Do' },
@@ -87,8 +88,12 @@ function TaskCreateModal({ team, designs, projects = [], onCreate, onClose }) {
     if (!form.title.trim() || saving) return;
     setSaving(true);
     setSaveError(null);
+    let timeoutId = null;
     try {
-      const created = await onCreate({
+      // Refresh the auth token before saving so the timeout only counts DB write time,
+      // not token-refresh latency after the app has been idle for a while.
+      await ensureFreshSession();
+      const createPromise = onCreate({
         ...form,
         assignee_ids: form.assignee_ids,
         assignee_id: form.assignee_ids[0] || null,
@@ -96,6 +101,13 @@ function TaskCreateModal({ team, designs, projects = [], onCreate, onClose }) {
         design_id: form.design_id || null,
         project_id: form.project_id || null,
       });
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('Request timed out — check your connection and try again.')),
+          45000
+        );
+      });
+      const created = await Promise.race([createPromise, timeoutPromise]);
       // Notify Slack about the new task (fire-and-forget)
       if (created) {
         const assignee = team.find(m => m.id === (created.assignee_ids?.[0] || created.assignee_id));
@@ -105,6 +117,7 @@ function TaskCreateModal({ team, designs, projects = [], onCreate, onClose }) {
     } catch (err) {
       setSaveError(err?.message || 'Save failed — unknown error.');
     } finally {
+      clearTimeout(timeoutId);
       setSaving(false);
     }
   };

@@ -17,6 +17,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// ─── Session refresh helper ───
+// Call this at the start of any save/create/delete operation.
+// If the JWT is expired or about to expire, Supabase will silently refresh it
+// here — before the save timeout starts — so the 45-second timeout only
+// counts actual database write time, not token-refresh latency.
+export async function ensureFreshSession() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data?.session) throw new Error('Your session has expired. Please sign in again.');
+  return data.session;
+}
+
 // ─── Auth helpers ───
 export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
