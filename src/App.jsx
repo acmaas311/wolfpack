@@ -9,6 +9,7 @@ import DesignPipeline from './components/designs/DesignPipeline';
 import SalesDashboard from './components/sales/SalesDashboard';
 import DecisionsView from './components/decisions/DecisionsView';
 import ProjectsView from './components/projects/ProjectsView';
+import FilesView from './components/files/FilesView';
 import { Avatar } from './components/shared/UI';
 
 const TABS = [
@@ -16,6 +17,7 @@ const TABS = [
   { id: 'projects', label: 'Projects' },
   { id: 'sales', label: 'Sales' },
   { id: 'designs', label: 'Designs' },
+  { id: 'files', label: 'Files' },
   { id: 'decisions', label: 'Decisions' },
 ];
 
@@ -206,6 +208,13 @@ function AuthenticatedApp({ user, teamMember, signOut }) {
                 onUpdate={handleDesignUpdate}
                 onCreate={createDesign}
                 onDelete={deleteDesign}
+              />
+            )}
+            {activeTab === 'files' && (
+              <FilesView
+                tasks={tasks}
+                designs={designs}
+                team={team}
               />
             )}
             {activeTab === 'decisions' && (
