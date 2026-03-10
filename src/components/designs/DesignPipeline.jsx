@@ -336,40 +336,56 @@ function DesignDetailModal({ design, team, tasks, onSave, onDelete, onClose }) {
     if (saving) return;
     setSaving(true);
     setSaveError(null);
-    let timeoutId = null;
-    try {
-      // Refresh the auth token before saving so the timeout only counts DB write time,
-      // not token-refresh latency after the app has been idle for a while.
-      await ensureFreshSession();
-      const updates = {
-        ...form,
-        assignee_ids: form.assignee_ids,
-        assignee_id: form.assignee_ids[0] || null,
-        // Use ?? '' so .trim() never throws if a field is null/undefined
-        drive_file_url: (form.drive_file_url ?? '').trim() || null,
-        drive_file_name: (form.drive_file_name ?? '').trim() || null,
-      };
 
-      // iOS Safari can silently hang fetch() when the network switches or a
-      // token refresh stalls — race against a 45-second timeout so the button
-      // never stays frozen at "Saving…" forever.
-      const savePromise = onSave(design.id, updates);
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error('Save timed out — check your connection and try again.')),
-          45000
-        );
-      });
+    const updates = {
+      ...form,
+      assignee_ids: form.assignee_ids,
+      assignee_id: form.assignee_ids[0] || null,
+      // Use ?? '' so .trim() never throws if a field is null/undefined
+      drive_file_url: (form.drive_file_url ?? '').trim() || null,
+      drive_file_name: (form.drive_file_name ?? '').trim() || null,
+    };
 
-      await Promise.race([savePromise, timeoutPromise]);
-      onClose();
-    } catch (err) {
-      console.error('Save design error:', err);
-      setSaveError(err.message || 'Failed to save changes. Please try again.');
-    } finally {
-      clearTimeout(timeoutId);
-      setSaving(false);
+    // Retry up to 2 times with a 20 s timeout each.
+    // The first timeout is almost always a cold PostgREST TCP connection;
+    // the retry lands on a freshly-warmed connection and succeeds instantly.
+    const MAX_ATTEMPTS = 2;
+    const TIMEOUT_MS = 20000;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      let timeoutId = null;
+      try {
+        await ensureFreshSession();
+        const savePromise = onSave(design.id, updates);
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('__timeout__')), TIMEOUT_MS);
+        });
+
+        await Promise.race([savePromise, timeoutPromise]);
+        onClose();
+        return; // success — exit the loop
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.message === '__timeout__' && attempt < MAX_ATTEMPTS) {
+          // First timeout: show a brief "retrying" hint and loop again.
+          console.warn(`Save attempt ${attempt} timed out — retrying on fresh connection…`);
+          setSaveError('Connection was slow — retrying…');
+          continue;
+        }
+        // Final attempt failed, or a non-timeout error — surface it.
+        const msg = err.message === '__timeout__'
+          ? 'Save timed out — check your connection and try again.'
+          : (err.message || 'Failed to save changes. Please try again.');
+        console.error('Save design error:', err);
+        setSaveError(msg);
+        setSaving(false);
+        return;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
+
+    setSaving(false);
   };
 
   return (

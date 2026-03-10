@@ -53,35 +53,57 @@ export default function TaskEditModal({ task, team, designs, projects = [], onSa
     if (!form.title.trim() || saving) return;
     setSaving(true);
     setSaveError(null);
-    let timeoutId = null;
-    try {
-      // Refresh the auth token before saving so the timeout only counts DB write time,
-      // not token-refresh latency after the app has been idle for a while.
-      await ensureFreshSession();
-      const savePromise = onSave(task.id, {
-        ...form,
-        due_date: form.due_date || null,
-        design_id: form.design_id || null,
-        assignee_ids: form.assignee_ids,
-        assignee_id: form.assignee_ids[0] || null,   // keep for backward compat
-        project_id: form.project_id || null,
-        drive_file_url: form.drive_file_url || null,
-        drive_file_name: form.drive_file_name || null,
-      });
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error('Save timed out — check your connection and try again.')),
-          45000
-        );
-      });
-      await Promise.race([savePromise, timeoutPromise]);
-      onClose();
-    } catch (err) {
-      setSaveError(err?.message || 'Save failed — please try again.');
-    } finally {
-      clearTimeout(timeoutId);
-      setSaving(false);
+
+    const updates = {
+      ...form,
+      due_date: form.due_date || null,
+      design_id: form.design_id || null,
+      assignee_ids: form.assignee_ids,
+      assignee_id: form.assignee_ids[0] || null,   // keep for backward compat
+      project_id: form.project_id || null,
+      drive_file_url: form.drive_file_url || null,
+      drive_file_name: form.drive_file_name || null,
+    };
+
+    // Retry up to 2 times with a 20 s timeout each.
+    // The first timeout is almost always a cold PostgREST TCP connection;
+    // the retry lands on a freshly-warmed connection and succeeds instantly.
+    const MAX_ATTEMPTS = 2;
+    const TIMEOUT_MS = 20000;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      let timeoutId = null;
+      try {
+        await ensureFreshSession();
+        const savePromise = onSave(task.id, updates);
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('__timeout__')), TIMEOUT_MS);
+        });
+
+        await Promise.race([savePromise, timeoutPromise]);
+        onClose();
+        return; // success — exit the loop
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.message === '__timeout__' && attempt < MAX_ATTEMPTS) {
+          // First timeout: show a brief "retrying" hint and loop again.
+          console.warn(`Save attempt ${attempt} timed out — retrying on fresh connection…`);
+          setSaveError('Connection was slow — retrying…');
+          continue;
+        }
+        // Final attempt failed, or a non-timeout error — surface it.
+        const msg = err.message === '__timeout__'
+          ? 'Save timed out — check your connection and try again.'
+          : (err?.message || 'Save failed — please try again.');
+        setSaveError(msg);
+        setSaving(false);
+        return;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
+
+    setSaving(false);
   };
 
   return (

@@ -16,23 +16,30 @@ export function AuthProvider({ children }) {
   );
 
   // ─── Connection keep-alive + Page Visibility reconnect ───────────────────
-  // Browsers close idle HTTP connections after ~2-5 minutes of no network
-  // activity. A dropped connection means the first save after inactivity has to
-  // pay a full TCP+TLS reconnect cost before the request can even start, which
-  // can push past the save timeout and cause spurious failures.
+  // Browsers close idle TCP connections after ~2-5 minutes of inactivity.
+  // Supabase uses TWO separate HTTP hosts:
+  //   • supabase.co/auth/v1  — used by getSession() / token refresh
+  //   • supabase.co/rest/v1  — used by every save (PostgREST)
+  // Each host maintains its own connection pool, so pinging only the auth
+  // endpoint leaves the PostgREST connection cold. A cold PostgREST connection
+  // pays a full TCP+TLS reconnect cost on the first save, which can exceed the
+  // save timeout and produce a spurious "timed out" error.
   //
-  // Two complementary strategies:
-  //  1. Keep-alive ping every 2 minutes — prevents the connection from ever
-  //     going truly idle when the tab is open and in use.
-  //  2. Page Visibility handler — when the user returns to a background tab,
-  //     immediately kick off a reconnect so it's warm before they click Save.
+  // Fix: ping BOTH endpoints every 90 seconds so neither ever goes truly idle.
+  // Page Visibility fires an immediate ping when the user returns to a
+  // background tab, warming the connection before they click Save.
   useEffect(() => {
     function ping() {
+      // Keep the auth endpoint alive
       supabase.auth.getSession().catch(() => {});
+      // Keep the PostgREST endpoint alive with a minimal read query.
+      // Fire-and-forget — errors are silently swallowed.
+      supabase.from('team_members').select('id').limit(1).then(() => {}, () => {});
     }
 
-    // Ping every 2 minutes to keep the connection warm.
-    const keepAlive = setInterval(ping, 2 * 60 * 1000);
+    // Ping every 90 seconds — short enough to stay inside any NAT/firewall
+    // idle-timeout window (typically 2-5 min) without hammering the server.
+    const keepAlive = setInterval(ping, 90 * 1000);
 
     // Also ping immediately when the tab becomes visible after being in the background.
     function handleVisibilityChange() {
