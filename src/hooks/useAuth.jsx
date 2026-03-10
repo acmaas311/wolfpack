@@ -15,24 +15,35 @@ export function AuthProvider({ children }) {
     () => sessionStorage.getItem('_gat') || null
   );
 
-  // ─── Page Visibility: reconnect when tab regains focus ────────────────────
-  // Browsers (especially Chrome) throttle background tabs: they freeze JS timers
-  // and can close idle TCP/WebSocket connections. When the user returns to the
-  // tab after ~5 minutes, the Supabase Realtime WebSocket channels and the HTTP
-  // connection pool may need to re-establish. By proactively calling getSession()
-  // the moment the tab becomes visible, we kick off that reconnection in the
-  // background — so by the time the user clicks Save (a second or two later)
-  // the connection is already warm and the save completes instantly.
+  // ─── Connection keep-alive + Page Visibility reconnect ───────────────────
+  // Browsers close idle HTTP connections after ~2-5 minutes of no network
+  // activity. A dropped connection means the first save after inactivity has to
+  // pay a full TCP+TLS reconnect cost before the request can even start, which
+  // can push past the save timeout and cause spurious failures.
+  //
+  // Two complementary strategies:
+  //  1. Keep-alive ping every 2 minutes — prevents the connection from ever
+  //     going truly idle when the tab is open and in use.
+  //  2. Page Visibility handler — when the user returns to a background tab,
+  //     immediately kick off a reconnect so it's warm before they click Save.
   useEffect(() => {
+    function ping() {
+      supabase.auth.getSession().catch(() => {});
+    }
+
+    // Ping every 2 minutes to keep the connection warm.
+    const keepAlive = setInterval(ping, 2 * 60 * 1000);
+
+    // Also ping immediately when the tab becomes visible after being in the background.
     function handleVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        supabase.auth.getSession().catch(() => {
-          // Session may have genuinely expired — onAuthStateChange will handle it
-        });
-      }
+      if (document.visibilityState === 'visible') ping();
     }
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(keepAlive);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {

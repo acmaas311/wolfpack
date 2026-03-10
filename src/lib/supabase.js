@@ -23,21 +23,25 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // here — before the save timeout starts — so the 45-second timeout only
 // counts actual database write time, not token-refresh latency.
 export async function ensureFreshSession() {
-  // Race the session check against a 10-second timeout.
-  // If the browser just woke up from throttling and the network is slow,
-  // we fail fast with a clear message rather than silently hanging until
-  // the 45-second save timeout fires.
+  // Race the session check against an 8-second timeout.
+  // IMPORTANT: on timeout we do NOT throw — we return null and let the save
+  // proceed anyway. After just a few minutes of inactivity the JWT is still
+  // fully valid (it lasts 3600s), so the Supabase database call will succeed
+  // even without an explicit session refresh. Only throw if Supabase positively
+  // confirms the session is gone (i.e. the check completed and returned nothing).
   let timeoutId;
   try {
     const result = await Promise.race([
       supabase.auth.getSession(),
-      new Promise((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error('Connection is slow — please wait a moment and try again.')),
-          10000
-        );
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => resolve({ timeout: true }), 8000);
       }),
     ]);
+    if (result.timeout) {
+      // Connection is sluggish — proceed with the save and let Supabase handle auth.
+      console.warn('ensureFreshSession: check timed out, proceeding with save attempt');
+      return null;
+    }
     if (result.error || !result.data?.session) {
       throw new Error('Your session has expired. Please sign in again.');
     }
